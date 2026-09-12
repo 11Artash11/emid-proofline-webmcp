@@ -37,6 +37,12 @@ const toolNames = [
   "prepare_case_change",
 ];
 
+const interfaceProposal = {
+  title: "Request a completeness confirmation",
+  targetId: "GAP-001",
+  rationale: "The dated evidence does not establish that the submitted file is complete.",
+} as const;
+
 function sourceFor(id: string) {
   return sources.find((source) => source.id === id);
 }
@@ -50,7 +56,9 @@ export default function Proofline() {
   const [toolSupport, setToolSupport] = useState<"checking" | "available" | "unavailable">("checking");
   const [lastTool, setLastTool] = useState("No site tool used in this session.");
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const proposalsRef = useRef<Proposal[]>([]);
   const proposalCounter = useRef(0);
+  const tracePanelRef = useRef<HTMLElement>(null);
 
   const selectedClaim = claimFor(selectedClaimId) ?? claims[0];
   const selectedSources = useMemo(
@@ -59,6 +67,11 @@ export default function Proofline() {
   );
 
   function prepareProposal(title: string, targetId: string, rationale: string, createdBy: Proposal["createdBy"]) {
+    const existing = proposalsRef.current.find(
+      (proposal) => proposal.title === title && proposal.targetId === targetId && proposal.rationale === rationale,
+    );
+    if (existing) return { proposal: existing, created: false };
+
     proposalCounter.current += 1;
     const proposal: Proposal = {
       id: `PRP-${String(proposalCounter.current).padStart(3, "0")}`,
@@ -68,8 +81,9 @@ export default function Proofline() {
       status: "awaiting_human_approval",
       createdBy,
     };
-    setProposals((current) => [...current, proposal]);
-    return proposal;
+    proposalsRef.current = [...proposalsRef.current, proposal];
+    setProposals(proposalsRef.current);
+    return { proposal, created: true };
   }
 
   useEffect(() => {
@@ -157,9 +171,11 @@ export default function Proofline() {
           const targetId = String(input.target_id ?? "").trim();
           const rationale = String(input.rationale ?? "").trim();
           if (title.length < 8 || targetId.length < 3 || rationale.length < 12) return { error: "Input is too short. No proposal was created." };
-          const proposal = prepareProposal(title, targetId, rationale, "agent");
-          setLastTool(`prepare_case_change created ${proposal.id}; nothing was applied.`);
-          return { proposal, applied: false, external_action: false, next_required_actor: "human_reviewer" };
+          const result = prepareProposal(title, targetId, rationale, "agent");
+          setLastTool(result.created
+            ? `prepare_case_change created ${result.proposal.id}; nothing was applied.`
+            : `prepare_case_change reused ${result.proposal.id}; no duplicate was created.`);
+          return { ...result, applied: false, external_action: false, next_required_actor: "human_reviewer" };
         },
       },
     ];
@@ -177,7 +193,15 @@ export default function Proofline() {
   }, []);
 
   function reviewProposal(id: string, status: "approved" | "rejected") {
-    setProposals((current) => current.map((proposal) => (proposal.id === id ? { ...proposal, status } : proposal)));
+    proposalsRef.current = proposalsRef.current.map((proposal) => (proposal.id === id ? { ...proposal, status } : proposal));
+    setProposals(proposalsRef.current);
+  }
+
+  function selectClaim(id: string) {
+    setSelectedClaimId(id);
+    if (window.matchMedia("(max-width: 1050px)").matches) {
+      requestAnimationFrame(() => tracePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
   }
 
   return (
@@ -202,10 +226,10 @@ export default function Proofline() {
 
         <div className="claims-panel" id="claims">
           <div className="panel-heading"><div><p className="eyebrow">Claim ledger</p><h2>What can we actually say?</h2></div><span className="result-count">5 claims</span></div>
-          <div className="claim-list">{claims.map((claim) => <button className={`claim-card ${selectedClaim.id === claim.id ? "selected" : ""}`} key={claim.id} onClick={() => setSelectedClaimId(claim.id)}><span className={`level level-${claim.level}`}>{claim.levelLabel}</span><strong>{claim.statement}</strong><span className="claim-meta"><b>{claim.id}</b><i>{claim.sourceIds.length} linked source{claim.sourceIds.length === 1 ? "" : "s"}</i></span></button>)}</div>
+          <div className="claim-list">{claims.map((claim) => <button className={`claim-card ${selectedClaim.id === claim.id ? "selected" : ""}`} key={claim.id} onClick={() => selectClaim(claim.id)} aria-pressed={selectedClaim.id === claim.id} aria-controls="trace"><span className={`level level-${claim.level}`}>{claim.levelLabel}</span><strong>{claim.statement}</strong><span className="claim-meta"><b>{claim.id}</b><i>{claim.sourceIds.length} linked source{claim.sourceIds.length === 1 ? "" : "s"}</i></span></button>)}</div>
         </div>
 
-        <aside className="trace-panel" id="trace" aria-live="polite">
+        <aside className="trace-panel" id="trace" aria-live="polite" ref={tracePanelRef} tabIndex={-1}>
           <div className="trace-header"><p className="eyebrow">Trace view</p><span>{selectedClaim.id}</span></div><h2>{selectedClaim.statement}</h2><p className="reasoning">{selectedClaim.reasoning}</p>
           <div className="source-stack">{selectedSources.length ? selectedSources.map((source) => source && <article key={source.id}><div><span>{source.id}</span><time>{source.date}</time></div><h3>{source.title}</h3><p>“{source.excerpt}”</p><small>{source.kind} · {source.integrity}</small></article>) : <div className="empty-trace"><span>∅</span><strong>No supporting source</strong><p>This is visible as a gap, not filled with a guess.</p></div>}</div>
         </aside>
@@ -220,7 +244,7 @@ export default function Proofline() {
 
       <section className="agent-section">
         <div className="agent-copy"><p className="eyebrow light">Human + agent</p><h2>Five real tools.<br />One visible chain of custody.</h2><p>The agent can read status, trace claims, list gaps, rank next steps, and prepare a change. Every result is bounded by the fictional case data on this page.</p><div className="tool-list">{toolNames.map((name, index) => <span key={name}><b>0{index + 1}</b>{name}</span>)}</div></div>
-        <div className="activity-console"><div className="console-top"><span>LIVE ACTIVITY</span><span className={toolSupport}>● {toolSupport}</span></div><div className="console-body"><span className="prompt">proofline / project-horizon</span><p>{lastTool}</p><small>Tool results are inspectable. No external action can be taken from this demo.</small></div><button onClick={() => prepareProposal("Request a completeness confirmation", "GAP-001", "The dated evidence does not establish that the submitted file is complete.", "human")}>Prepare a safe change proposal</button></div>
+        <div className="activity-console"><div className="console-top"><span>LIVE ACTIVITY</span><span className={toolSupport}>● {toolSupport}</span></div><div className="console-body"><span className="prompt">proofline / project-horizon</span><p>{lastTool}</p><small>Tool results are inspectable. No external action can be taken from this demo.</small></div><button disabled={proposals.some((proposal) => proposal.title === interfaceProposal.title && proposal.targetId === interfaceProposal.targetId && proposal.rationale === interfaceProposal.rationale)} onClick={() => prepareProposal(interfaceProposal.title, interfaceProposal.targetId, interfaceProposal.rationale, "human")}>{proposals.some((proposal) => proposal.title === interfaceProposal.title && proposal.targetId === interfaceProposal.targetId && proposal.rationale === interfaceProposal.rationale) ? "Proposal already prepared" : "Prepare a safe change proposal"}</button></div>
       </section>
 
       <section className="approval-section" id="approval">
@@ -228,7 +252,7 @@ export default function Proofline() {
         <div className="approval-layout"><div className="next-steps">{nextSteps.map((step) => <article key={step.id}><span>0{step.priority}</span><div><h3>{step.title}</h3><p>{step.rationale}</p></div></article>)}</div><div className="proposal-queue"><div className="queue-heading"><strong>Human review queue</strong><span>{proposals.filter((item) => item.status === "awaiting_human_approval").length} pending</span></div>{proposals.length === 0 ? <div className="queue-empty"><span>✓</span><p>No prepared changes. Ask the agent to prepare one, or use the button above.</p></div> : proposals.map((proposal) => <article key={proposal.id}><div className="proposal-top"><span>{proposal.id}</span><span>{proposal.createdBy === "agent" ? "Prepared by agent" : "Prepared in interface"}</span></div><h3>{proposal.title}</h3><p>{proposal.rationale}</p>{proposal.status === "awaiting_human_approval" ? <div className="review-actions"><button onClick={() => reviewProposal(proposal.id, "rejected")}>Reject</button><button className="approve" onClick={() => reviewProposal(proposal.id, "approved")}>Approve proposal</button></div> : <span className={`reviewed ${proposal.status}`}>{proposal.status === "approved" ? "Approved as proposal · not executed" : "Rejected"}</span>}</article>)}</div></div>
       </section>
 
-      <footer><div className="brand"><span className="brand-mark">E</span><span><strong>EMID Proofline</strong><small>Integrity before intelligence</small></span></div><p>Public-safe demonstration by Artashes Nazaryan. Project Horizon and all records shown are fictional.</p><p>EMID remains a local/offline prototype with no documented clients, sales, pilots, or commercial validation.</p></footer>
+      <footer><div className="brand"><span className="brand-mark">E</span><span><strong>EMID Proofline</strong><small>Integrity before intelligence</small><small>Demo v0.1 · local review 2026-09-11</small></span></div><p>Public-safe demonstration by Artashes Nazaryan. Project Horizon and all records shown are fictional.</p><p>EMID remains a local/offline prototype with no documented clients, sales, pilots, or commercial validation.<br /><span className="session-note">Local session · close the preview server after review. No case data persists.</span></p></footer>
     </main>
   );
 }
