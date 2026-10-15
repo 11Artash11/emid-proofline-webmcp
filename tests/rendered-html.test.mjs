@@ -58,4 +58,7 @@ test("registers the required WebMCP tools on the top-level page", async () => {
   assert.match(source, /VISIBLE AGENT ACTIVITY/);
   assert.match(source, /runGuidedReview/);
   assert.match(source, /0<\/b> records changed/);
+  assert.match(source, /proposal-target/);
+  assert.match(source, /Target · \{proposal\.targetId\}/);
+  assert.match(source, /enum: proposalTargetIds/);
 });

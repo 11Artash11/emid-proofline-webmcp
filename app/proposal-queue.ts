@@ -12,7 +12,12 @@ export type Proposal = {
 type Result = { proposal: Proposal; created: boolean } | { error: string; code: "invalid_input" | "queue_full" };
 
 // Enforce bounds at execution time, even when a caller bypasses the tool schema.
-export function createProposal(current: readonly Proposal[], input: Record<string, unknown>, createdBy: Proposal["createdBy"]): Result {
+export function createProposal(
+  current: readonly Proposal[],
+  input: Record<string, unknown>,
+  createdBy: Proposal["createdBy"],
+  allowedTargetIds: readonly string[],
+): Result {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return { error: "Invalid proposal input. No proposal was created.", code: "invalid_input" };
   }
@@ -26,6 +31,9 @@ export function createProposal(current: readonly Proposal[], input: Record<strin
   const title = (input.title as string).trim();
   const targetId = (input.target_id as string).trim();
   const rationale = (input.rationale as string).trim();
+  if (!allowedTargetIds.includes(targetId)) {
+    return { error: "Unknown target_id. Choose a visible case, claim, or gap identifier. No proposal was created.", code: "invalid_input" };
+  }
   const existing = current.find((proposal) => proposal.title === title && proposal.targetId === targetId && proposal.rationale === rationale);
   if (existing) return { proposal: existing, created: false };
   // Reviewed items also count: retaining them must never grow the session queue.

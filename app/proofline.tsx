@@ -42,6 +42,8 @@ const interfaceProposal = {
   rationale: "The dated evidence does not establish that the submitted file is complete.",
 } as const;
 
+const proposalTargetIds = ["HZ-204", ...claims.map((claim) => claim.id), ...gaps.map((gap) => gap.id)];
+
 function sourceFor(id: string) {
   return sources.find((source) => source.id === id);
 }
@@ -83,7 +85,7 @@ export default function Proofline() {
   }
 
   function prepareProposal(input: Record<string, unknown>, createdBy: Proposal["createdBy"]) {
-    const result = createProposal(proposalsRef.current, input, createdBy);
+    const result = createProposal(proposalsRef.current, input, createdBy, proposalTargetIds);
     if (!("error" in result) && result.created) {
       proposalsRef.current = [...proposalsRef.current, result.proposal];
       setProposals(proposalsRef.current);
@@ -171,7 +173,7 @@ export default function Proofline() {
         description: "Prepare a reversible case-change proposal for human review. This tool never applies, sends, files, or publishes the change.",
         inputSchema: objectSchema({
           title: { type: "string", minLength: 8, maxLength: 100, description: "Short proposed change." },
-          target_id: { type: "string", minLength: 3, maxLength: 30, description: "Claim, gap, or case identifier." },
+          target_id: { type: "string", enum: proposalTargetIds, description: "Visible claim, gap, or case identifier." },
           rationale: { type: "string", minLength: 12, maxLength: 280, description: "Evidence-based reason for proposing the change." },
         }, ["title", "target_id", "rationale"]),
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
@@ -264,7 +266,7 @@ export default function Proofline() {
 
       <section className="approval-section" id="approval">
         <div className="section-heading"><div><p className="eyebrow">Approval boundary</p><h2>Prepared is not applied.</h2></div><p>A proposal can be inspected, approved, or rejected by a person. Even approval in this demo changes only the proposal state—it never sends, files, uploads, or publishes anything.</p></div>
-        <div className="approval-layout"><div className="next-steps">{nextSteps.map((step) => <article key={step.id}><span>0{step.priority}</span><div><h3>{step.title}</h3><p>{step.rationale}</p></div></article>)}</div><div className="proposal-queue"><div className="queue-heading"><strong>Human review queue</strong><span>{proposals.filter((item) => item.status === "awaiting_human_approval").length} pending</span></div><p className="queue-capacity" aria-live="polite">{proposals.length} of {MAX_PROPOSALS} session slots used.{proposals.length >= MAX_PROPOSALS ? " Queue full. Existing proposals remain available for review." : ""}</p>{proposals.length === 0 ? <div className="queue-empty"><span>✓</span><p>No prepared changes. Ask the agent to prepare one, or use the button above.</p></div> : proposals.map((proposal) => <article key={proposal.id}><div className="proposal-top"><span>{proposal.id}</span><span>{proposal.createdBy === "agent" ? "Prepared by agent" : "Prepared in interface"}</span></div><h3>{proposal.title}</h3><p>{proposal.rationale}</p>{proposal.status === "awaiting_human_approval" ? <div className="review-actions"><button onClick={() => reviewProposal(proposal.id, "rejected")}>Reject</button><button className="approve" onClick={() => reviewProposal(proposal.id, "approved")}>Approve proposal</button></div> : <span className={`reviewed ${proposal.status}`}>{proposal.status === "approved" ? "Approved as proposal · not executed" : "Rejected"}</span>}</article>)}</div></div>
+        <div className="approval-layout"><div className="next-steps">{nextSteps.map((step) => <article key={step.id}><span>0{step.priority}</span><div><h3>{step.title}</h3><p>{step.rationale}</p></div></article>)}</div><div className="proposal-queue"><div className="queue-heading"><strong>Human review queue</strong><span>{proposals.filter((item) => item.status === "awaiting_human_approval").length} pending</span></div><p className="queue-capacity" aria-live="polite">{proposals.length} of {MAX_PROPOSALS} session slots used.{proposals.length >= MAX_PROPOSALS ? " Queue full. Existing proposals remain available for review." : ""}</p>{proposals.length === 0 ? <div className="queue-empty"><span>✓</span><p>No prepared changes. Ask the agent to prepare one, or use the button above.</p></div> : proposals.map((proposal) => <article key={proposal.id}><div className="proposal-top"><span>{proposal.id}</span><span>{proposal.createdBy === "agent" ? "Prepared by agent" : "Prepared in interface"}</span></div><span className="proposal-target">Target · {proposal.targetId}</span><h3>{proposal.title}</h3><p>{proposal.rationale}</p>{proposal.status === "awaiting_human_approval" ? <div className="review-actions"><button onClick={() => reviewProposal(proposal.id, "rejected")}>Reject</button><button className="approve" onClick={() => reviewProposal(proposal.id, "approved")}>Approve proposal</button></div> : <span className={`reviewed ${proposal.status}`}>{proposal.status === "approved" ? "Approved as proposal · not executed" : "Rejected"}</span>}</article>)}</div></div>
       </section>
 
       <footer><div className="brand"><span className="brand-mark">E</span><span><strong>EMID Proofline</strong><small>Integrity before intelligence</small><small>Evolution preview v0.2 · 2026-09-28</small></span></div><p>Public-safe demonstration by Artashes Nazaryan. Project Horizon and all records shown are fictional.</p><p>EMID remains a local/offline prototype with no documented clients, sales, pilots, or commercial validation.<br /><span className="session-note">Local session · close the preview server after review. No case data persists.</span></p></footer>
