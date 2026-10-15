@@ -8,6 +8,14 @@ approval.
 The demo uses only **Project Horizon**, a fictional case. It contains no
 production records, customer data, or real case material.
 
+## Post-challenge evolution
+
+The WebMCP Challenge submission is preserved at commit `4aae218`. Version 0.2
+is a clearly labeled post-challenge evolution: it adds a 30-second guided
+evidence review and a visible activity trail so a visitor can see the agent
+trace a claim, surface gaps, and stop before any external action. These later
+improvements were not part of the evaluated submission.
+
 ## WebMCP site tools
 
 The top-level page registers five tools through

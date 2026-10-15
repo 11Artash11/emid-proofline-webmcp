@@ -2,6 +2,22 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+test("image optimizer rejects cache-busting and malformed requests before accessing bindings", async () => {
+  const { default: worker } = await import(new URL("../dist/server/index.js", import.meta.url));
+  let bindingCalls = 0;
+  const env = {
+    ASSETS: { fetch() { bindingCalls++; throw new Error("Unexpected asset fetch"); } },
+    IMAGES: { input() { bindingCalls++; throw new Error("Unexpected paid transform"); } },
+  };
+  for (const method of ["GET", "HEAD", "POST"]) {
+    for (const query of ["", "?url=%2Fog-proofline.png&w=640&q=75", "?url=%2Fog-proofline.png&w=640&q=75&nonce=1", "?url=https%3A%2F%2Fexample.com%2Fimage.png&w=640", "?url=%2Fog-proofline.png&w=bad"]) {
+      const response = await worker.fetch(new Request(`http://localhost/_vinext/image${query}`, { method }), env, { waitUntil() {}, passThroughOnException() {} });
+      assert.equal(response.status, 404);
+    }
+  }
+  assert.equal(bindingCalls, 0);
+});
+
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
@@ -19,6 +35,8 @@ test("renders the public-safe EMID Proofline workspace", async () => {
   assert.match(html, /fictional data/i);
   assert.match(html, /prepare_case_change/);
   assert.match(html, /Prepared is not applied/);
+  assert.match(html, /Run the 30-second review/);
+  assert.match(html, /Can we tell the applicant that funding is approved/);
   assert.match(html, /Artashes Nazaryan/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|DNI|pasaporte|OSDE|Banco Nación|Validación técnica inicial/i);
 });
@@ -37,4 +55,7 @@ test("registers the required WebMCP tools on the top-level page", async () => {
   }
   assert.match(source, /applied: false/);
   assert.match(source, /external_action: false/);
+  assert.match(source, /VISIBLE AGENT ACTIVITY/);
+  assert.match(source, /runGuidedReview/);
+  assert.match(source, /0<\/b> records changed/);
 });
